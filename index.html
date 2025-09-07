@@ -439,19 +439,14 @@ $$('[data-action="add-to-cart"]').forEach(btn => {
         showToast('購物車已清空');
       });
 
-  document.getElementById('order-form').addEventListener('submit', function (e) {
+  document.getElementById('order-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    if (cart.length === 0) {
-      alert('請先將商品加入購物車！');
-      return;
-    }
+    if (cart.length === 0) { alert('請先將商品加入購物車！'); return; }
 
     const f = e.currentTarget;
     const payload = {
       name: f.name.value.trim(),
       phone: f.phone.value.trim(),
-      email: f.email.value.trim(),
       address: f.address.value.trim(),
       account: f.account.value.trim(),
       cart: cart.map(it => ({
@@ -462,25 +457,32 @@ $$('[data-action="add-to-cart"]').forEach(btn => {
       createdAt: new Date().toISOString()
     };
 
-   fetch("/.netlify/functions/submit", {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
-  })
-    .then(r => r.json())
-    .then(data => {
-      if (!data || data.ok !== true) {
-        alert("送出失敗");
-        return;
+    try {
+      const res = await fetch('/.netlify/functions/submit', {
+        method: 'POST',
+        // 用 text/plain 或 application/json 都可；保守起見維持 text/plain
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+
+      const raw = await res.text();            // 先拿純文字
+      console.log('submit raw response:', raw);
+      let data = null;
+      try { data = JSON.parse(raw); } catch (_) {}
+
+      // 判斷條件放寬：res.ok && (data?.ok === true 或 文字中包含 "ok":true)
+      const okByText = /"ok"\s*:\s*true/.test(raw);
+      if (!res.ok || !(data?.ok === true || okByText)) {
+        throw new Error((data && data.message) || raw || '送出失敗');
       }
+
+      // 成功：打開成功彈窗
       document.getElementById('success-modal').classList.remove('hidden');
       document.getElementById('success-modal').classList.add('flex');
-      localStorage.removeItem('cart');
-      document.getElementById('order-form').reset();
-    })
-    .catch(err => {
-      alert("送出失敗：" + err.message);
-    });
+    } catch (err) {
+      console.error(err);
+      alert('送出失敗：' + (err?.message || '未知錯誤'));
+    }
   });
 
       // 關閉成功彈窗
